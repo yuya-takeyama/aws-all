@@ -1,0 +1,50 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+AWS_PROFILES="${AWS_PROFILES:-}"
+AWS_REGIONS="${AWS_REGIONS:-}"
+OUTPUT_FORMAT="json"
+
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --profiles) AWS_PROFILES="$2"; shift ;;
+    --regions) AWS_REGIONS="$2"; shift ;;
+    --output) OUTPUT_FORMAT="$2"; shift ;;
+    --) shift; break ;;
+    *) echo "Unknown parameter passed: $1"; exit 1 ;;
+  esac
+  shift
+done
+
+if [[ -z "$AWS_PROFILES" ]]; then
+  echo "Error: You must specify AWS profiles through command line argument or environment variable."
+  echo 'Command line argument: --profiles "profile-1 profile-2 profile-3"'
+  echo 'Environment variable: AWS_PROFILES="profile-1 profile-2 profile-3"'
+  exit 1
+fi
+
+if [[ -z "$AWS_REGIONS" ]]; then
+  echo "Error: You must specify AWS regions through command line argument or environment variable."
+  echo 'Command line argument: --regions "us-east-1 us-east-2 ap-northeast-1"'
+  echo 'Environment variable: AWS_REGIONS="us-east-1 us-east-2 ap-northeast-1"'
+  exit 1
+fi
+
+for profile in $AWS_PROFILES; do
+  for region in $AWS_REGIONS; do
+    case "$OUTPUT_FORMAT" in
+      json)
+        output=$(aws --profile "$profile" --region "$region" --output json $@ | jq -c .)
+        jq -n -M --arg region "$region" --arg profile "$profile" --argjson output "$output" '{region: $region, profile: $profile, output: $output}'
+        ;;
+      text)
+        echo -e "Region: $region\nProfile: $profile\nOutput:"
+        AWS_PAGER="" aws --profile "$profile" --region "$region" --output text $@
+        echo "---"
+        ;;
+      *) echo "Error: Invalid output format specified. Allowed values are json or text."; exit 1 ;;
+    esac
+  done
+done
